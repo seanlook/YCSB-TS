@@ -34,9 +34,12 @@ public class InfluxDBClient extends DB {
     private boolean _debug = false;
     private InfluxDB client;
     private boolean batch = false;
+    private int batchActions = 10;
+    private int batchInterval = 1000;
     private boolean groupBy = true;
     private boolean test = false;
     private String valueFieldName = "value"; // in which field should the value be?
+    private int valueFieldCount = 1;
 
     /**
      * Initialize any state for this DB.
@@ -47,6 +50,9 @@ public class InfluxDBClient extends DB {
         try {
             test = Boolean.parseBoolean(getProperties().getProperty("test", "false"));
             batch = Boolean.parseBoolean(getProperties().getProperty("batch", "false"));
+            batchActions = Integer.parseInt(getProperties().getProperty("batch.actions", String.valueOf(batchActions)));
+            batchInterval = Integer.parseInt(getProperties().getProperty("batch.interval", String.valueOf(batchInterval)));
+            valueFieldCount = Integer.parseInt(getProperties().getProperty("valuefieldcount", String.valueOf(valueFieldCount)));
             if (!getProperties().containsKey("port") && !test) {
                 throw new DBException("No port given, abort.");
             }
@@ -68,7 +74,7 @@ public class InfluxDBClient extends DB {
                     this.client = this.client.setLogLevel(InfluxDB.LogLevel.FULL);
                 }
                 if (this.batch) {
-                    this.client = this.client.enableBatch(10, 1000, TimeUnit.MILLISECONDS);
+                    this.client = this.client.enableBatch(batchActions, batchInterval, TimeUnit.MILLISECONDS);
                 }
                 this.client.ping();
             }
@@ -299,9 +305,13 @@ public class InfluxDBClient extends DB {
             Point.Builder pb = Point.measurement(metric)
                     .time(timestamp.getTime(), TimeUnit.MILLISECONDS);
             for ( Map.Entry entry : tags.entrySet()) {
-                pb = pb.field(entry.getKey().toString(), entry.getValue().toString());
+                pb = pb.tag(entry.getKey().toString(), entry.getValue().toString());
             }
-            pb = pb.field(this.valueFieldName, String.valueOf(value));
+			pb = pb.field(this.valueFieldName, value);
+			// add more field values
+            for (int i = 1; i < valueFieldCount; i = i+1){
+                pb = pb.field(this.valueFieldName + i, value + i);
+            }
             if (test) {
                 return SUCCESS;
             }
